@@ -1,71 +1,74 @@
-import { useState } from "react";
+import { useLoaderData } from "@remix-run/react";
+import { json } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
 import {
   Page,
   Layout,
-  TextField,
-  Button,
   Card,
   Text,
-  InlineStack,
+  BlockStack,
+  Box,
+  Link,
+  InlineCode,
 } from "@shopify/polaris";
-import { TitleBar } from "@shopify/app-bridge-react";
 
-export default function AdditionalSettingsPage() {
-  const [apiKey, setApiKey] = useState("");
-  const [status, setStatus] = useState(null);
+export const loader = async ({ request }) => {
+  const { session } = await authenticate.admin(request);
+  const webhookUrl = `https://shopfunnels-3.fly.dev/api/create-order?shop=${session.shop}`;
+  return json({ webhookUrl });
+};
 
-  const saveApiKey = async () => {
-    try {
-      const response = await fetch("/api/store-api-key", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ apiKey }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        setStatus("✅ API key saved successfully.");
-      } else {
-        setStatus(`❌ Error: ${result.error || "Something went wrong"}`);
-      }
-    } catch (error) {
-      console.error(error);
-      setStatus("❌ Failed to save API key.");
-    }
-  };
+export default function AdditionalPage() {
+  const { webhookUrl } = useLoaderData();
 
   return (
-    <Page>
-      <TitleBar title="External App Settings" />
+    <Page title="How to Integrate">
       <Layout>
         <Layout.Section>
-          <Card sectioned>
-            <Text variant="headingMd" as="h2">
-              Connect External System
-            </Text>
-            <Text as="p" variant="bodyMd" tone="subdued">
-              Enter your external app's API key to allow secure order syncing.
-            </Text>
-            <InlineStack gap="400" align="start" blockAlign="center" wrap={false}>
-              <TextField
-                label="API Key"
-                value={apiKey}
-                onChange={setApiKey}
-                autoComplete="off"
-                helpText="This key is provided by your external system."
-              />
-              <Button onClick={saveApiKey} primary>
-                Save
-              </Button>
-            </InlineStack>
-            {status && (
-              <Text tone={status.startsWith("✅") ? "success" : "critical"}>
-                {status}
+          <Card>
+            <BlockStack gap="400">
+              <Text variant="headingMd" as="h2">
+                Connect Your External App
               </Text>
-            )}
+              <Text as="p">
+                To start sending orders from your external app to Shopify, follow these steps:
+              </Text>
+
+              <ol style={{ paddingLeft: "1.5rem" }}>
+                <li>
+                  Go to your external app settings or automation builder.
+                </li>
+                <li>
+                  Find the place to configure a webhook or "HTTP Request".
+                </li>
+                <li>
+                  Use the following URL as the destination:
+                  <Box paddingBlock="200">
+                    <InlineCode>{webhookUrl}</InlineCode>
+                  </Box>
+                </li>
+                <li>
+                  Set the request method to <strong>POST</strong> and the content type to{" "}
+                  <InlineCode>application/json</InlineCode>.
+                </li>
+                <li>
+                  Make sure to send the full order data in the body. If you need a sample format,
+                  contact us.
+                </li>
+              </ol>
+
+              <Text as="p" variant="bodySm">
+                If you're testing, use a tool like{" "}
+                <Link url="https://hoppscotch.io" external>
+                  Hoppscotch
+                </Link>{" "}
+                or{" "}
+                <Link url="https://postman.com" external>
+                  Postman
+                </Link>{" "}
+                to simulate the request.
+              </Text>
+            </BlockStack>
           </Card>
         </Layout.Section>
       </Layout>

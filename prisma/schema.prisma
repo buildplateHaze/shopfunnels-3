@@ -30,3 +30,15 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+model StoreApiKey {
+  shop String @id
+  key  String
+}
+
+model OrderLog {
+  id        Int      @id @default(autoincrement())
+  shop      String
+  raw       String
+  createdAt DateTime @default(now())
+}

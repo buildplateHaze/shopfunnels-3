@@ -1,30 +1,30 @@
 import { json } from "@remix-run/node";
 import shopify from "../shopify.server";
-
-const VALID_API_KEY = "wf18399a20b224e899b51f95509c8bfd7"; // 🔒 External app key
+import prisma from "../db.server";
 
 export const action = async ({ request }) => {
-  // ✅ Validate API key
-  const authHeader = request.headers.get("authorization");
   const url = new URL(request.url);
-  const queryKey = url.searchParams.get("api_key");
-
-  const apiKey = authHeader?.replace("Bearer ", "") || queryKey;
-
-  if (apiKey !== VALID_API_KEY) {
-    return json({ success: false, error: "Unauthorized" }, { status: 401 });
-  }
-
   const shop = url.searchParams.get("shop");
+
   if (!shop) return json({ success: false, error: "Missing `shop` param" });
 
   const sessionId = `offline_${shop}`;
   const session = await shopify.sessionStorage.loadSession(sessionId);
+
   if (!session?.accessToken) {
     return json({ success: false, error: "No offline session found" });
   }
 
   const body = await request.json();
+
+  // 📝 Log order to database
+  await prisma.orderLog.create({
+    data: {
+      shop,
+      raw: JSON.stringify(body, null, 2),
+    },
+  });
+
   console.log("🟢 Received external order:", body);
 
   const { customerEmail, items, shippingAddress, billingAddress, total } = body;
@@ -59,6 +59,7 @@ export const action = async ({ request }) => {
   const orderPayload = {
     order: {
       email: customerEmail,
+      tags: "shopfunnels", // ✅ Add the tag here      
       line_items: variantIds,
       shipping_address: shippingAddress,
       billing_address: billingAddress,
