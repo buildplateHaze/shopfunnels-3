@@ -1,5 +1,6 @@
 import { json } from "@remix-run/node";
-import prisma from "../../db.server";
+import prisma from "../db.server";
+import shopify from "../shopify.server";
 
 export const action = async ({ request }) => {
   const body = await request.json();
@@ -9,10 +10,10 @@ export const action = async ({ request }) => {
     return json({ success: false, error: "Invalid API key" }, { status: 400 });
   }
 
-  // Update your DB as needed – here's an example using Prisma:
-  const shopify = (await import("../../shopify.server")).default;
+  // Get the authenticated admin session
   const { session } = await shopify.authenticate.admin(request);
 
+  // Store or update the API key associated with the shop
   await prisma.storeApiKey.upsert({
     where: { shop: session.shop },
     update: { key: apiKey },
