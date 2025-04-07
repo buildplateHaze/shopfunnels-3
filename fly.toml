@@ -1,0 +1,38 @@
+# fly.toml app configuration file generated for shopfunnels-3 on 2025-04-04T18:15:12+04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'shopfunnels-3'
+primary_region = 'ams'
+
+[build]
+
+[env]
+  PORT = '3000'
+  SCOPES = 'read_customers,read_orders,read_products,read_script_tags,write_customers,write_orders,write_products,write_script_tags'
+  SHOPIFY_API_KEY = '68e6c295befd3a388eb27950164600e4'
+  SHOPIFY_APP_URL = 'https://shopfunnels-3.fly.dev'
+
+[processes]
+  app = 'node ./dbsetup.js npm run docker-start'
+
+[[mounts]]
+  source = 'data'
+  destination = '/data'
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = '1GB'
+  auto_extend_size_limit = '10GB'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1

@@ -1,0 +1,36 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "68e6c295befd3a388eb27950164600e4"
+name = "shopfunnels-3"
+handle = "shopfunnels-7"
+application_url = "https://rebate-site-jean-heard.trycloudflare.com"
+embedded = true
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2025-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_products, read_products, read_customers, write_customers, read_orders, write_orders, read_script_tags, write_script_tags"
+
+[auth]
+redirect_urls = [
+  "https://rebate-site-jean-heard.trycloudflare.com/auth/callback",
+  "https://rebate-site-jean-heard.trycloudflare.com/auth/shopify/callback",
+  "https://rebate-site-jean-heard.trycloudflare.com/api/auth/callback"
+]
+
+[pos]
+embedded = false
