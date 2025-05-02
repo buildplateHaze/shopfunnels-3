@@ -1,0 +1,13 @@
+-- CreateTable
+CREATE TABLE "StoreApiKey" (
+    "shop" TEXT NOT NULL PRIMARY KEY,
+    "key" TEXT NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "OrderLog" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "shop" TEXT NOT NULL,
+    "raw" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

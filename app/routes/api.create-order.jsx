@@ -29,67 +29,106 @@ export const action = async ({ request }) => {
 
   const { customerEmail, items, shippingAddress, billingAddress, total } = body;
 
+  // First, get variant IDs for all items
   const variantIds = [];
   for (const item of items) {
-    const res = await fetch(`https://${shop}/admin/api/2023-10/products.json`, {
-      method: "GET",
+    const query = `
+      query getVariantBySku($sku: String!) {
+        productVariants(first: 1, query: $sku) {
+          nodes {
+            id
+          }
+        }
+      }
+    `;
+
+    const response = await fetch(`https://${shop}/admin/api/2025-04/graphql.json`, {
+      method: "POST",
       headers: {
         "X-Shopify-Access-Token": session.accessToken,
         "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        query,
+        variables: {
+          sku: item.sku
+        }
+      }),
     });
 
-    const data = await res.json();
-    const variant = data.products
-      .flatMap((product) => product.variants)
-      .find((v) => v.sku === item.sku);
+    const data = await response.json();
+    const variant = data.data?.productVariants?.nodes[0];
 
     if (!variant) {
       console.warn(`⚠️ SKU not found: ${item.sku}`);
       continue;
     }
 
-    variantIds.push({ variant_id: variant.id, quantity: item.quantity });
+    variantIds.push({
+      variantId: variant.id,
+      quantity: item.quantity
+    });
   }
 
   if (variantIds.length === 0) {
     return json({ success: false, error: "No valid variants found" });
   }
 
-  const orderPayload = {
-    order: {
-      email: customerEmail,
-      tags: "shopfunnels", // ✅ Add the tag here      
-      line_items: variantIds,
-      shipping_address: shippingAddress,
-      billing_address: billingAddress,
-      financial_status: "paid",
-      transactions: [
-        {
-          kind: "sale",
-          status: "success",
-          amount: total,
-        },
-      ],
-    },
+  // Create order using GraphQL mutation
+  const mutation = `
+    mutation orderCreate($input: OrderCreateInput!) {
+      orderCreate(input: $input) {
+        order {
+          id
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const orderInput = {
+    email: customerEmail,
+    tags: ["shopfunnels"],
+    lineItems: variantIds,
+    shippingAddress: shippingAddress,
+    billingAddress: billingAddress,
+    transactions: [
+      {
+        kind: "SALE",
+        status: "SUCCESS",
+        amount: total
+      }
+    ]
   };
 
-  const orderRes = await fetch(`https://${shop}/admin/api/2023-10/orders.json`, {
+  const orderResponse = await fetch(`https://${shop}/admin/api/2025-04/graphql.json`, {
     method: "POST",
     headers: {
       "X-Shopify-Access-Token": session.accessToken,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(orderPayload),
+    body: JSON.stringify({
+      query: mutation,
+      variables: {
+        input: orderInput
+      }
+    }),
   });
 
-  const orderData = await orderRes.json();
+  const orderData = await orderResponse.json();
 
-  if (!orderRes.ok) {
-    console.error("❌ Shopify error:", orderData);
-    return json({ success: false, error: "Failed to create order", details: orderData });
+  if (orderData.errors || orderData.data?.orderCreate?.userErrors?.length > 0) {
+    console.error("❌ Shopify error:", orderData.errors || orderData.data?.orderCreate?.userErrors);
+    return json({ 
+      success: false, 
+      error: "Failed to create order", 
+      details: orderData.errors || orderData.data?.orderCreate?.userErrors 
+    });
   }
 
-  console.log("✅ Shopify order created:", orderData.order?.id);
-  return json({ success: true, shopifyOrderId: orderData.order?.id });
+  console.log("✅ Shopify order created:", orderData.data?.orderCreate?.order?.id);
+  return json({ success: true, shopifyOrderId: orderData.data?.orderCreate?.order?.id });
 };
