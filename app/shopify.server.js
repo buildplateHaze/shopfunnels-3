@@ -6,6 +6,7 @@ import {
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+import { storeOfflineAccessToken } from "./utils/token.server";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -27,20 +28,8 @@ const shopify = shopifyApp({
   // ✅ Hook to store offline session after auth
   hooks: {
     afterAuth: async ({ session, app }) => {
-      const sessionId = `offline_${session.shop}`;
-      const existing = await app.sessionStorage.loadSession(sessionId);
-
-      if (!existing) {
-        const offlineSession = {
-          ...session,
-          id: sessionId,
-          isOnline: false,
-        };
-        await app.sessionStorage.storeSession(offlineSession);
-        console.log("✅ Stored offline session for", session.shop);
-      } else {
-        console.log("ℹ️ Offline session already exists for", session.shop);
-      }
+      // Store offline access token after successful authentication
+      await storeOfflineAccessToken(session);
     },
   },
 });

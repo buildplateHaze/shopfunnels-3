@@ -37,6 +37,8 @@ export const action = async ({ request }) => {
         productVariants(first: 1, query: $sku) {
           nodes {
             id
+            price
+            currencyCode
           }
         }
       }
@@ -51,7 +53,7 @@ export const action = async ({ request }) => {
       body: JSON.stringify({
         query,
         variables: {
-          sku: item.sku
+          sku: `sku:${item.sku}`
         }
       }),
     });
@@ -66,7 +68,9 @@ export const action = async ({ request }) => {
 
     variantIds.push({
       variantId: variant.id,
-      quantity: item.quantity
+      quantity: item.quantity,
+      price: variant.price,
+      currencyCode: variant.currencyCode
     });
   }
 
@@ -76,8 +80,8 @@ export const action = async ({ request }) => {
 
   // Create order using GraphQL mutation
   const mutation = `
-    mutation orderCreate($input: OrderCreateInput!) {
-      orderCreate(input: $input) {
+    mutation orderCreate($order: OrderCreateOrderInput!) {
+      orderCreate(order: $order) {
         order {
           id
         }
@@ -89,17 +93,36 @@ export const action = async ({ request }) => {
     }
   `;
 
+  // Prepare line items in the correct format
+  const lineItems = variantIds.map(item => ({
+    variantId: item.variantId,
+    quantity: item.quantity,
+    priceSet: {
+      shopMoney: {
+        amount: item.price,
+        currencyCode: item.currencyCode
+      }
+    }
+  }));
+
+  // Prepare the order input as per Shopify's requirements
   const orderInput = {
+    currency: "USD", // or dynamically set based on your store
     email: customerEmail,
     tags: ["shopfunnels"],
-    lineItems: variantIds,
+    lineItems,
     shippingAddress: shippingAddress,
     billingAddress: billingAddress,
     transactions: [
       {
         kind: "SALE",
         status: "SUCCESS",
-        amount: total
+        amountSet: {
+          shopMoney: {
+            amount: total,
+            currencyCode: "USD" // or dynamically set
+          }
+        }
       }
     ]
   };
@@ -113,7 +136,7 @@ export const action = async ({ request }) => {
     body: JSON.stringify({
       query: mutation,
       variables: {
-        input: orderInput
+        order: orderInput
       }
     }),
   });

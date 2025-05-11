@@ -4,9 +4,15 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useNavigation,
 } from "@remix-run/react";
+import { LoadingSpinner } from "./components/LoadingSpinner";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export default function App() {
+  const navigation = useNavigation();
+  const isLoading = navigation.state === "loading";
+
   return (
     <html>
       <head>
@@ -21,6 +27,7 @@ export default function App() {
         <Links />
       </head>
       <body>
+        {isLoading && <LoadingSpinner />}
         <Outlet />
         <ScrollRestoration />
         <Scripts />
@@ -28,3 +35,5 @@ export default function App() {
     </html>
   );
 }
+
+export { ErrorBoundary };
