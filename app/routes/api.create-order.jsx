@@ -1,21 +1,47 @@
 import { json } from "@remix-run/node";
 import shopify from "../shopify.server";
 import prisma from "../db.server";
+import { logOrderDetails, logOrderStatus } from "../utils/orderLogger";
+
+// Helper function to format address according to Shopify's MailingAddressInput
+function formatAddress(address) {
+  if (!address) return null;
+  
+  return {
+    firstName: address.name?.split(' ')[0] || '',
+    lastName: address.name?.split(' ').slice(1).join(' ') || '',
+    address1: address.address || '',
+    address2: address.address2 || '',
+    city: address.city || '',
+    province: address.state || '',
+    country: address.country || '',
+    zip: address.zipCode || '',
+    phone: address.phone || '',
+    company: address.companyName || ''
+  };
+}
 
 export const action = async ({ request }) => {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");
 
-  if (!shop) return json({ success: false, error: "Missing `shop` param" });
+  if (!shop) {
+    logOrderStatus("ERROR", "Missing shop parameter");
+    return json({ success: false, error: "Missing `shop` param" });
+  }
 
   const sessionId = `offline_${shop}`;
   const session = await shopify.sessionStorage.loadSession(sessionId);
 
   if (!session?.accessToken) {
+    logOrderStatus("ERROR", "No offline session found");
     return json({ success: false, error: "No offline session found" });
   }
 
   const body = await request.json();
+
+  // Log the incoming order details
+  logOrderDetails(body, "external");
 
   // 📝 Log order to database
   await prisma.orderLog.create({
@@ -25,21 +51,26 @@ export const action = async ({ request }) => {
     },
   });
 
-  console.log("🟢 Received external order:", body);
-
   const { customerEmail, items, shippingAddress, billingAddress, total } = body;
 
-  // First, get variant IDs for all items
+  // First, get variant IDs for all items and fetch shop currency code
+  let shopCurrency = "USD";
   const variantIds = [];
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     const query = `
       query getVariantBySku($sku: String!) {
         productVariants(first: 1, query: $sku) {
           nodes {
             id
             price
-            currencyCode
+            sku
+            product {
+              title
+            }
           }
+        }
+        shop {
+          currencyCode
         }
       }
     `;
@@ -60,21 +91,22 @@ export const action = async ({ request }) => {
 
     const data = await response.json();
     const variant = data.data?.productVariants?.nodes[0];
-
+    if (index === 0 && data.data?.shop?.currencyCode) {
+      shopCurrency = data.data.shop.currencyCode;
+    }
     if (!variant) {
-      console.warn(`⚠️ SKU not found: ${item.sku}`);
+      logOrderStatus("WARNING", `SKU not found: ${item.sku}`);
       continue;
     }
-
     variantIds.push({
       variantId: variant.id,
       quantity: item.quantity,
-      price: variant.price,
-      currencyCode: variant.currencyCode
+      price: variant.price
     });
   }
 
   if (variantIds.length === 0) {
+    logOrderStatus("ERROR", "No valid variants found");
     return json({ success: false, error: "No valid variants found" });
   }
 
@@ -100,19 +132,23 @@ export const action = async ({ request }) => {
     priceSet: {
       shopMoney: {
         amount: item.price,
-        currencyCode: item.currencyCode
+        currencyCode: shopCurrency
       }
     }
   }));
 
+  // Format addresses according to Shopify's requirements
+  const formattedShippingAddress = formatAddress(shippingAddress);
+  const formattedBillingAddress = formatAddress(billingAddress);
+
   // Prepare the order input as per Shopify's requirements
   const orderInput = {
-    currency: "USD", // or dynamically set based on your store
+    currency: shopCurrency,
     email: customerEmail,
     tags: ["shopfunnels"],
     lineItems,
-    shippingAddress: shippingAddress,
-    billingAddress: billingAddress,
+    shippingAddress: formattedShippingAddress,
+    billingAddress: formattedBillingAddress,
     transactions: [
       {
         kind: "SALE",
@@ -120,12 +156,14 @@ export const action = async ({ request }) => {
         amountSet: {
           shopMoney: {
             amount: total,
-            currencyCode: "USD" // or dynamically set
+            currencyCode: shopCurrency
           }
         }
       }
     ]
   };
+
+  logOrderStatus("PROCESSING", "Creating order in Shopify");
 
   const orderResponse = await fetch(`https://${shop}/admin/api/2025-04/graphql.json`, {
     method: "POST",
@@ -144,7 +182,7 @@ export const action = async ({ request }) => {
   const orderData = await orderResponse.json();
 
   if (orderData.errors || orderData.data?.orderCreate?.userErrors?.length > 0) {
-    console.error("❌ Shopify error:", orderData.errors || orderData.data?.orderCreate?.userErrors);
+    logOrderStatus("ERROR", "Failed to create order in Shopify", orderData.errors || orderData.data?.orderCreate?.userErrors);
     return json({ 
       success: false, 
       error: "Failed to create order", 
@@ -152,6 +190,7 @@ export const action = async ({ request }) => {
     });
   }
 
-  console.log("✅ Shopify order created:", orderData.data?.orderCreate?.order?.id);
-  return json({ success: true, shopifyOrderId: orderData.data?.orderCreate?.order?.id });
+  const shopifyOrderId = orderData.data?.orderCreate?.order?.id;
+  logOrderStatus("SUCCESS", `Order created successfully in Shopify with ID: ${shopifyOrderId}`);
+  return json({ success: true, shopifyOrderId });
 };
